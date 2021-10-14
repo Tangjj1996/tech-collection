@@ -23,7 +23,11 @@ function createTextElement(text) {
 
 const TinyReact = {
   createElement,
-  render
+  render,
+  useState,
+  useCallback,
+  useMemo,
+  useRef
 }
 
 function render(element, container) {
@@ -151,4 +155,49 @@ function useState(initialVaule) {
     recocile(instance.dom.parentDom, instance, instance.element)
   }
   return [wipInstance.hooks[wipHookIndex++], setState]
+}
+
+function useEffect(callback, deps) {
+  const oldDeps = wipInstance.hooks[wipHookIndex]
+  const hasChangedDep = oldDeps ? deps.some((el, i) => el !== oldDeps[i]) : true
+  if (!deps || hasChangedDep) {
+    callback()
+    wipInstance.hooks[wipHookIndex] = deps
+  }
+  wipHookIndex++
+}
+
+function useCallback(callback, deps) {
+  const { hooks } = wipInstance
+  if (hooks[wipHookIndex] && deps) {
+    const [oldCallback, oldDeps] = hooks[wipHookIndex]
+    if (deps.every((el, i) => el === oldDeps[i])) {
+      wipHookIndex++
+      return oldCallback
+    }
+  }
+  hooks[wipHookIndex++] = [callback, deps]
+  return callback
+}
+
+function useMemo(create, deps) {
+  const { hooks } = wipInstance
+  if (hooks[wipHookIndex] && deps) {
+    const [oldValue, oldDeps] = hooks[wipHookIndex]
+    if (!deps.some((el, i) => el !== oldDeps[i])) {
+      wipHookIndex++
+      return oldValue
+    }
+  }
+  const newValue = create()
+  hooks[wipHookIndex++] = [newValue, deps]
+  return newValue
+}
+
+function useRef(initialValue) {
+  const { hooks } = wipInstance
+  if (!hooks[wipHookIndex]) {
+    hooks[wipHookIndex] = { current: initialValue }
+  }
+  return hooks[wipHookIndex++]
 }

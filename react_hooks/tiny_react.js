@@ -1,3 +1,7 @@
+let rootInstance = null
+let wipInstance = null
+let wipHookIndex = 0
+
 function createElement(type, props, ...children) {
   return {
     type,
@@ -17,24 +21,10 @@ function createTextElement(text) {
   }
 }
 
-function render(element, parentDom) {
-  const { type, props, children = [] } = element
-  const dom = type === "TEXT_ELEMENT" ? document.createTextNode("") : document.createElement(type)
-  // Set properties
-  Object.keys(props).forEach(name => {
-    dom[name] = props[name]
-  })
-  // Render children
-  children.forEach(childrenElement => render(childrenElement, dom))
-  parentDom.appendChild(dom)
-}
-
 const TinyReact = {
   createElement,
   render
 }
-
-let rootInstance = null
 
 function render(element, container) {
   const prevInstance = rootInstance
@@ -52,27 +42,28 @@ function recocile(parentDom, instance, element) {
     // Remove instance
     parentDom.removeChild(instance.dom)
     return null
-  } else if (instance.element.type === element.type) {
-    // Update instance
-    if (typeof element.type === 'function') {
-      const childElement = element.type(element.props)
-      const oldChildInstance = instance.childInstance
-      const childInstance = recocile(parentDom, oldChildInstance, childElement)
-      instance.dom = childInstance.dom
-      instance.element = element
-      instance.childInstance = childInstance
-      return instance
-    } else {
-      updateDomProperties(instance.dom, instance.element.props, element.props)
-      instance.childInstances = recocileChildren(instance, element)
-      instance.element = element
-      return instance
-    }
-  } else {
-    // Repalce instance
+  } else if(instance.element.type !== element.type) {
+    // Replace instance
     const newInstance = instantiate(element)
     parentDom.replaceChild(newInstance.dom, instance.dom)
     return newInstance
+  } else if (typeof element.type === 'string') {
+    // Update dom instance
+    updateDomProperties(instance.dom, instance.element.props)
+    instance.childInstances = recocileChildren(instance, element)
+    instance.element = element
+    return instance
+  } else {
+    // Update function instance
+    wipInstance = instance
+    wipHookIndex = 0
+    const childElement = element.type(element.props)
+    const oldChildInstance = instance.childInstance
+    const childInstance = recocile(parentDom, oldChildInstance, childElement)
+    instance.dom = childInstance.dom
+    instance.element = element
+    instance.childInstance = childInstance
+    return instance
   }
 }
 
@@ -94,13 +85,14 @@ function instantiate(element) {
   const { type, props, children = [] } = element
   // Handle function component
   if (typeof type === 'function') {
+    wipInstance = { hooks: [] }
+    wipHookIndex = 0
     const childElement = type(props)
     const childInstance = instantiate(childElement)
-    return {
-      dom: childInstance.dom,
-      element,
-      childInstance
-    }
+    wipInstance.dom = childInstance.dom
+    wipInstance.element = element
+    wipInstance.childInstance = childInstance
+    return wipInstance
   }
   // Create DOM element
   const isTextElement = type === "TEXT_ELEMENT"
@@ -147,4 +139,16 @@ function updateDomProperties(dom, prevProps, nextProps) {
       const eventType = name.toLowerCase().substring(2)
       dom.addEventListener(eventType, nextProps[name])
     })
+}
+
+function useState(initialVaule) {
+  const instance = wipInstance
+  const hooks = wipInstance.hooks
+  const hookIndex = wipHookIndex
+  hooks[hookIndex] = hooks[hookIndex] || initialVaule
+  const setState = (newState) => {
+    hooks[hookIndex] = newState
+    recocile(instance.dom.parentDom, instance, instance.element)
+  }
+  return [wipInstance.hooks[wipHookIndex++], setState]
 }
